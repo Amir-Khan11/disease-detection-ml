@@ -60,21 +60,10 @@ python src/app.py --cli "fever, chills, body pain"   # command-line mode
 ```
 
 ## Evaluation on a real dataset
-
-1. Download the Kaggle **"Disease Symptom Prediction"** dataset and put `dataset.csv` in `data/raw/`.
-2. Convert the text symptoms into a 0/1 matrix:
-   ```bash
-   python src/prepare_dataset.py --input data/raw/dataset.csv --output data/processed/symptoms_binary.csv
-   ```
-3. Compare models:
-   ```bash
-   python src/train_real_dataset.py --data data/processed/symptoms_binary.csv --target disease
-   ```
-   This runs stratified 5-fold cross-validation on Decision Tree, Naive Bayes, Logistic Regression and
-   Random Forest, removes duplicate rows to avoid train/test leakage, and writes `model_comparison.csv`,
-   a classification report, a confusion matrix and top-symptom importances to `reports/`.
-
-(The Kaggle "Disease Prediction Using Machine Learning" `Training.csv` also works directly with `--target prognosis`.)
+The cleaned dataset is included in `data/real/symptoms_binary.csv`, so you can run the comparison directly:
+```bash
+python src/train_real_dataset.py --data data/real/symptoms_binary.csv --target disease
+```
 
 ## Results
 
