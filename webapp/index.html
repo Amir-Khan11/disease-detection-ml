@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Disease Detection Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="brand-block">
+          <p class="eyebrow">Disease Detection Assistant</p>
+          <h1>Symptom Checker</h1>
+        </div>
+        <div class="top-actions">
+          <button class="ghost-button ghost-button-light" id="new-chat">New chat</button>
+          <button class="ghost-button" id="share-plots">Plots</button>
+          <button class="ghost-button" id="more-summary">ML Summary</button>
+        </div>
+      </header>
+
+      <section class="chat-wrapper">
+        <div id="chat-column" class="chat-column initial-state">
+          <section id="hero-card" class="hero-card">
+            <p class="hero-kicker">Local ML Demo</p>
+            <h2>Disease detection demo for checking symptom patterns with a simple machine learning workflow.</h2>
+            <p class="hero-copy">Enter symptoms in plain English. The app maps your text to known symptoms, predicts likely disease matches, and shows a quick structured analysis using a local ML model.</p>
+          </section>
+
+          <div id="messages" class="messages"></div>
+
+          <div id="prompt-pills" class="prompt-pills">
+            <button class="pill" data-prompt="I have fever and chills">Fever and chills</button>
+            <button class="pill" data-prompt="I am coughing with sore throat">Cough and sore throat</button>
+            <button class="pill" data-prompt="I feel nausea, rash, and weakness">Nausea, rash, weakness</button>
+          </div>
+
+          <div class="composer-stack">
+            <form id="composer-form" class="composer">
+              <div class="composer-input-wrap">
+                <span class="input-icon" aria-hidden="true"></span>
+                <textarea id="message-input" rows="1" placeholder="Describe symptoms in natural language"></textarea>
+              </div>
+              <button type="submit" class="send-button" aria-label="Send message">
+                <span class="icon-send"></span>
+              </button>
+            </form>
+
+            <p class="footer-note">Medical AI outputs are for educational use. Verify important health decisions with qualified professionals.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="assistant-template">
+    <article class="message assistant">
+      <div class="assistant-row">
+        <div class="assistant-avatar">
+          <span class="assistant-avatar-core"></span>
+        </div>
+        <div class="assistant-card"></div>
+      </div>
+    </article>
+  </template>
+
+  <template id="user-template">
+    <article class="message user">
+      <div class="user-bubble"></div>
+    </article>
+  </template>
+
+  <template id="typing-template">
+    <article class="message assistant typing-message">
+      <div class="assistant-row">
+        <div class="assistant-avatar">
+          <span class="assistant-avatar-core"></span>
+        </div>
+        <div class="assistant-card typing-card">
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <dialog id="summary-dialog" class="modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2>ML Summary</h2>
+          <p>Project metrics and model performance.</p>
+        </div>
+        <button class="close-button" data-close="summary-dialog">×</button>
+      </div>
+      <div id="summary-content" class="summary-content"></div>
+    </div>
+  </dialog>
+
+  <dialog id="plots-dialog" class="modal">
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <div>
+          <h2>Plots</h2>
+          <p>Generated visual outputs from the ML workflow.</p>
+        </div>
+        <button class="close-button" data-close="plots-dialog">×</button>
+      </div>
+      <div class="plot-grid">
+        <figure>
+          <img src="/plots/class_distribution.png" alt="Class distribution plot">
+          <figcaption>Class Distribution</figcaption>
+        </figure>
+        <figure>
+          <img src="/plots/confusion_matrix.png" alt="Confusion matrix plot">
+          <figcaption>Confusion Matrix</figcaption>
+        </figure>
+        <figure>
+          <img src="/plots/symptom_clusters.png" alt="Symptom clusters plot">
+          <figcaption>KMeans Symptom Clusters</figcaption>
+        </figure>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
