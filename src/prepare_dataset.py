@@ -19,6 +19,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", default="data/processed/symptoms_binary.csv")
+    ap.add_argument("--dedupe", action="store_true", help="Drop duplicate rows from the output")
     args = ap.parse_args()
 
     df = pd.read_csv(args.input)
@@ -35,11 +36,13 @@ def main() -> None:
     for i, (_, syms) in enumerate(records):
         out.loc[i, list(syms)] = 1
     out["disease"] = [d for d, _ in records]
+    if args.dedupe:
+        out = out.drop_duplicates().reset_index(drop=True)
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(args.output, index=False)
     print(f"Saved {args.output}: {len(out)} rows, {len(all_symptoms)} symptoms, {out['disease'].nunique()} diseases")
-    print(f"Duplicate rows: {out.duplicated().sum()}")
+    print(f"Duplicate rows remaining: {out.duplicated().sum()}")
 
 
 if __name__ == "__main__":

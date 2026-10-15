@@ -7,10 +7,11 @@ probabilities, general advice, and a symptom-pattern cluster.
 > ⚠️ **Educational project only. Not a medical device and not a substitute for a doctor.**
 
 ![Web UI](docs/images/webui.png)
+![Web UI](docs/images/webdemo.png)
 
 ## Features
 
-- Supervised learning: Decision Tree classifier (scikit-learn)
+- Supervised learning: Random Forest on the real dataset (Decision Tree on the built-in demo data if the real file is absent)
 - Unsupervised learning: KMeans clustering + PCA visualisation of symptom patterns
 - Natural-language symptom parsing (keyword/synonym matching)
 - Web chat interface (HTML/CSS/JS) served by a lightweight Python backend, plus a CLI mode
@@ -23,7 +24,8 @@ src/app.py                    # model, API server, CLI
 src/prepare_dataset.py        # converts text-symptom CSVs to a 0/1 matrix
 src/train_real_dataset.py     # model comparison on a real dataset
 webapp/                       # frontend (HTML/CSS/JS)
-data/synthetic/               # generated demo dataset used by the web app
+data/real/                    # real dataset used by the web app + descriptions and precautions
+data/synthetic/               # generated demo dataset (fallback)
 data/raw/                     # put the real dataset here (not committed)
 reports/                      # generated metrics and plots
 docs/                         # project report and images
@@ -37,6 +39,18 @@ cd disease-detection-ml
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+## Real dataset in the web app
+
+1. Download `dataset.csv` from the Kaggle "Disease Symptom Prediction" dataset into `data/raw/`.
+2. Build the cleaned 0/1 file (duplicates removed) directly into `data/real/`:
+   ```bash
+   python src/prepare_dataset.py --input data/raw/dataset.csv --output data/real/symptoms_binary.csv --dedupe
+   ```
+   `data/real/` already contains `symptom_Description.csv` and `symptom_precaution.csv`.
+3. Start the app. If `data/real/symptoms_binary.csv` exists the app trains a Random Forest on it
+   (41 diseases, 131 symptoms) and shows each disease's description and precautions; otherwise it
+   falls back to the small synthetic demo data.
 
 ## Run the web app
 
@@ -73,6 +87,9 @@ Dataset: 4,920 rows in the raw file, **304 unique rows** after removing 4,616 du
 | Naive Bayes         | 97.7%                | 0.966    |
 | Decision Tree       | 36.9%                | 0.282    |
 
+![Confusion matrix](reports/real_confusion_matrix.png)
+![Top symptoms](reports/feature_importance.png)
+
 ### Findings
 
 - The raw dataset is about 94% duplicate rows. Evaluating on it without deduplication leaks identical rows into
@@ -84,15 +101,15 @@ Dataset: 4,920 rows in the raw file, **304 unique rows** after removing 4,616 du
 
 ## Limitations
 
-- The web app currently uses a Decision Tree trained on the small **synthetic** demo dataset (390 rows, only 51
-  unique), so its own ~94% accuracy figure is inflated by duplicates.
+- The fallback demo dataset is **synthetic** (390 rows, only 51 unique), so its ~94% accuracy is inflated by duplicates.
+- The real dataset is clean and artificially generated, so the web app's accuracy figure (near 100%) is not a
+  real-world estimate. With only a few typed symptoms, probabilities are spread across several diseases.
 - Binary symptoms only: no severity, duration, age or lab values.
 - Keyword-based parsing misses misspellings and complex sentences.
 
 ## Future work
 
-Use the Random Forest and the real dataset in the web app, add disease descriptions and precautions from the
-dataset's extra CSVs, NLP-based symptom extraction, probability calibration, SHAP explanations, Docker and deployment.
+Use the dataset's severity scores, NLP-based symptom extraction, probability calibration, SHAP explanations, Docker and deployment.
 
 ## License
 

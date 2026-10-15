@@ -6,7 +6,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import argparse
 import json
+import difflib
 import os
+import re
 import webbrowser
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp")
@@ -20,6 +22,7 @@ try:
     import matplotlib.pyplot as plt
     from sklearn.cluster import KMeans
     from sklearn.decomposition import PCA
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import accuracy_score, confusion_matrix
     from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
@@ -29,6 +32,7 @@ except ImportError as exc:
     plt = None
     KMeans = None
     PCA = None
+    RandomForestClassifier = None
     accuracy_score = None
     confusion_matrix = None
     train_test_split = None
@@ -36,6 +40,30 @@ except ImportError as exc:
     IMPORT_ERROR = str(exc)
 else:
     IMPORT_ERROR = None
+
+
+# Everyday phrases -> dataset symptom columns (used only in real-dataset mode; unknown columns are ignored)
+REAL_SYNONYMS = {
+    "fever": ["high_fever"], "temperature": ["high_fever"], "high temperature": ["high_fever"],
+    "chill": ["chills"], "shaking": ["shivering"],
+    "body pain": ["muscle_pain", "joint_pain"], "body ache": ["muscle_pain", "joint_pain"],
+    "muscle ache": ["muscle_pain"], "joint ache": ["joint_pain"], "back ache": ["back_pain"],
+    "head ache": ["headache"], "head pain": ["headache"],
+    "throwing up": ["vomiting"], "vomit": ["vomiting"],
+    "tired": ["fatigue"], "tiredness": ["fatigue"], "exhausted": ["fatigue"],
+    "weakness": ["muscle_weakness", "fatigue"],
+    "rash": ["skin_rash"], "red spots": ["red_spots_over_body"], "itch": ["itching"],
+    "sore throat": ["throat_irritation", "patches_in_throat"], "throat pain": ["throat_irritation"],
+    "stuffy nose": ["congestion"], "blocked nose": ["congestion"],
+    "short of breath": ["breathlessness"], "shortness of breath": ["breathlessness"],
+    "difficulty breathing": ["breathlessness"],
+    "stomach ache": ["stomach_pain"], "tummy pain": ["stomach_pain"], "belly pain": ["abdominal_pain"],
+    "loose motion": ["diarrhoea"], "diarrhea": ["diarrhoea"],
+    "dizzy": ["dizziness"], "sweat": ["sweating"],
+    "yellow skin": ["yellowish_skin"], "yellow eyes": ["yellowing_of_eyes"],
+    "painful urination": ["burning_micturition"], "burning urination": ["burning_micturition"],
+    "frequent urination": ["polyuria"],
+}
 
 
 @dataclass
@@ -124,10 +152,81 @@ class DiseaseDetectionML:
             "healthy": "Very low risk pattern based on current inputs.",
         }
 
-        self.dataset = self._build_dataset()
+        self.model_name = "Decision Tree"
+        self.dataset_name = "Synthetic Dataset"
+        self.real_data_path = self.base_dir / "data" / "real" / "symptoms_binary.csv"
+        self.use_real_data = self.real_data_path.exists()
+        if self.use_real_data:
+            self._setup_real_data()
+
+        self.dataset = self.real_df if self.use_real_data else self._build_dataset()
         self.model, self.report = self._train_supervised_model()
         self.cluster_model, self.pca_model, self.cluster_labels = self._train_unsupervised_model()
         self._generate_visual_reports()
+
+    @staticmethod
+    def _norm(text: object) -> str:
+        return re.sub(r"[^a-z0-9]", "", str(text).lower())
+
+    @staticmethod
+    def _display(text: object) -> str:
+        return " ".join(str(text).replace("_", " ").split())
+
+    def _lookup(self, key: str, mapping: dict):
+        if key in mapping:
+            return mapping[key]
+        close = difflib.get_close_matches(key, list(mapping), n=1, cutoff=0.85)
+        return mapping[close[0]] if close else None
+
+    def _setup_real_data(self) -> None:
+        """Use the real symptom dataset (data/real/) with Random Forest, descriptions and precautions."""
+        data_dir = self.real_data_path.parent
+        df = pd.read_csv(self.real_data_path).drop_duplicates().reset_index(drop=True)
+        df["disease"] = df["disease"].map(self._display)
+        symptoms = [column for column in df.columns if column != "disease"]
+
+        self.real_df = df
+        self.symptom_order = symptoms
+        self.symptom_map = {symptom: [self._display(symptom)] for symptom in symptoms}
+        for phrase, columns in REAL_SYNONYMS.items():
+            for column in columns:
+                if column in self.symptom_map:
+                    self.symptom_map[column].append(phrase)
+
+        descriptions: dict[str, str] = {}
+        description_file = data_dir / "symptom_Description.csv"
+        if description_file.exists():
+            for _, row in pd.read_csv(description_file).iterrows():
+                descriptions[self._norm(row.iloc[0])] = str(row.iloc[1]).strip()
+
+        precautions: dict[str, list[str]] = {}
+        precaution_file = data_dir / "symptom_precaution.csv"
+        if precaution_file.exists():
+            for _, row in pd.read_csv(precaution_file).iterrows():
+                items = [str(item).strip().capitalize() for item in row.iloc[1:].dropna() if str(item).strip()]
+                precautions[self._norm(row.iloc[0])] = items
+
+        diseases = sorted(df["disease"].unique())
+        self.disease_profiles = {disease: None for disease in diseases}
+        self.advice = {}
+        self.severity_notes = {}
+        for disease in diseases:
+            key = self._norm(disease)
+            steps = self._lookup(key, precautions)
+            about = self._lookup(key, descriptions)
+            self.advice[disease] = (
+                "Suggested precautions: " + "; ".join(steps) + ". Please consult a doctor for a proper diagnosis."
+                if steps else "Please consult a doctor for a proper diagnosis."
+            )
+            self.severity_notes[disease] = f"About {disease}: {about}" if about else "No description available."
+
+        self.model_name = "Random Forest"
+        self.dataset_name = "Real Dataset (Kaggle Disease Symptom Prediction)"
+
+    def _term_in_text(self, term: str, text: str) -> bool:
+        if self.use_real_data:
+            return re.search(r"\b" + re.escape(term), text) is not None
+        return term in text
 
     def _build_dataset(self) -> pd.DataFrame:
         rng = np.random.default_rng(42)
@@ -155,15 +254,23 @@ class DiseaseDetectionML:
         x_values = self.dataset[self.symptom_order]
         y_values = self.dataset["disease"]
 
+        if self.use_real_data:
+            test_size = max(0.2, (y_values.nunique() + 1) / len(y_values))
+            stratify = y_values if y_values.value_counts().min() >= 2 else None
+            model = RandomForestClassifier(n_estimators=200, random_state=42)
+        else:
+            test_size = 0.25
+            stratify = y_values
+            model = DecisionTreeClassifier(max_depth=6, random_state=42)
+
         x_train, x_test, y_train, y_test = train_test_split(
             x_values,
             y_values,
-            test_size=0.25,
+            test_size=test_size,
             random_state=42,
-            stratify=y_values,
+            stratify=stratify,
         )
 
-        model = DecisionTreeClassifier(max_depth=6, random_state=42)
         model.fit(x_train, y_train)
 
         self.test_labels = y_test
@@ -191,26 +298,29 @@ class DiseaseDetectionML:
 
     def _generate_visual_reports(self) -> None:
         counts = self.dataset["disease"].value_counts().sort_values(ascending=False)
-        plt.figure(figsize=(10, 5))
+        many = len(counts) > 12
+        plt.figure(figsize=(14, 7) if many else (10, 5))
         plt.bar(counts.index, counts.values, color="#10a37f")
-        plt.title("Disease Distribution in Synthetic Dataset")
+        plt.title(f"Disease Distribution in {self.dataset_name}")
         plt.ylabel("Sample Count")
-        plt.xticks(rotation=20)
+        plt.xticks(rotation=90 if many else 20, fontsize=7 if many else 10)
         plt.tight_layout()
         plt.savefig(self.output_dir / "class_distribution.png")
         plt.close()
 
         labels = sorted(self.dataset["disease"].unique())
         matrix = confusion_matrix(self.test_labels, self.test_predictions, labels=labels)
-        plt.figure(figsize=(8, 6))
+        many = len(labels) > 15
+        plt.figure(figsize=(14, 12) if many else (8, 6))
         plt.imshow(matrix, cmap="Blues")
-        plt.title("Decision Tree Confusion Matrix")
+        plt.title(f"{self.model_name} Confusion Matrix")
         plt.colorbar()
-        plt.xticks(range(len(labels)), labels, rotation=35, ha="right")
-        plt.yticks(range(len(labels)), labels)
-        for row in range(matrix.shape[0]):
-            for col in range(matrix.shape[1]):
-                plt.text(col, row, str(matrix[row, col]), ha="center", va="center", color="#111827")
+        plt.xticks(range(len(labels)), labels, rotation=90 if many else 35, ha="center" if many else "right", fontsize=6 if many else 10)
+        plt.yticks(range(len(labels)), labels, fontsize=6 if many else 10)
+        if not many:
+            for row in range(matrix.shape[0]):
+                for col in range(matrix.shape[1]):
+                    plt.text(col, row, str(matrix[row, col]), ha="center", va="center", color="#111827")
         plt.tight_layout()
         plt.savefig(self.output_dir / "confusion_matrix.png")
         plt.close()
@@ -236,7 +346,7 @@ class DiseaseDetectionML:
         recognized = []
 
         for symptom in self.symptom_order:
-            found = any(term in lowered for term in self.symptom_map[symptom])
+            found = any(self._term_in_text(term, lowered) for term in self.symptom_map[symptom])
             vector.append(1 if found else 0)
             if found:
                 recognized.append(symptom.replace("_", " "))
@@ -249,8 +359,8 @@ class DiseaseDetectionML:
             return DiagnosisResult(
                 recognized_symptoms=[],
                 predictions=[("healthy", 1.0)],
-                advice=self.advice["healthy"],
-                severity=self.severity_notes["healthy"],
+                advice=self.advice.get("healthy", ""),
+                severity=self.severity_notes.get("healthy", ""),
                 cluster_label=0,
             )
 
@@ -262,8 +372,8 @@ class DiseaseDetectionML:
         return DiagnosisResult(
             recognized_symptoms=recognized,
             predictions=predictions[:3],
-            advice=self.advice[top_label],
-            severity=self.severity_notes[top_label],
+            advice=self.advice.get(top_label, ""),
+            severity=self.severity_notes.get(top_label, ""),
             cluster_label=int(self.cluster_model.predict(input_frame)[0]),
         )
 
@@ -280,7 +390,12 @@ class DiseaseDetectionML:
                 "confusion_matrix": "/plots/confusion_matrix.png",
                 "symptom_clusters": "/plots/symptom_clusters.png",
             },
-            "dataset_path": str(self.base_dir / "data" / "synthetic" / "synthetic_symptom_dataset.csv"),
+            "model": self.model_name,
+            "dataset": self.dataset_name,
+            "dataset_path": str(
+                self.real_data_path if self.use_real_data
+                else self.base_dir / "data" / "synthetic" / "synthetic_symptom_dataset.csv"
+            ),
         }
 
 
